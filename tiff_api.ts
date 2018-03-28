@@ -82,6 +82,107 @@ class Tiff {
     return data;
   }
 
+  getScale(width: number, height: number, canvas: HTMLCanvasElement, context: CanvasRenderingContext2D): number {
+    // Tests if the canvas is too big for the device by drawing a pixel and reading it back
+    var testColor = "#ffffff";
+    var colorData = new Uint8ClampedArray(4);
+    var tiffSize = width * height;
+    var scale = 0;
+    while (colorData[0] != 255)
+    {
+        scale += 1;
+        canvas.width = width;
+        canvas.height = height;       
+        context.fillStyle = testColor;
+        context.fillRect(0,0,1,1);
+        colorData = context.getImageData(0,0,1,1).data;
+        width /= 2;
+        height /= 2;
+    }
+    
+    return scale;
+  }
+
+  isMobile(): Boolean {
+    return /Mobi/.test(navigator.userAgent);
+  }
+
+  filterArea(origImg: Uint8Array, filteredImg: Uint8Array, startRow: number, endRow: number, startCol: number, endCol: number, rowScale: number, colScale: number, scale: number, rowBytes: number, newRowBytes: number, numComps: number) {             
+    var sumR, sumG, sumB, sumA;
+    var boxRow, boxCol;
+    var destIdx = 0;
+    var scaleByScale = rowScale * colScale;
+
+    //Filter the given area of the image
+    for (var row = startRow; row < endRow; row++)
+    {
+            var srcRow = row * scale;
+            for(var col = startCol; col < endCol; col += numComps)
+            {
+                    var destIdx = row * newRowBytes + col;
+                    var srcCol = col * scale;
+                    sumR = 0;
+                    sumG = 0;
+                    sumB = 0;
+                    sumA = 0;
+                    
+                    // Get the average color of all of the pixels that are being downsized into one. The box of pixels will be based on the given scale.
+                    for(boxRow = 0; boxRow < rowScale; boxRow++) 
+                    { 
+                            var srcRowIdx = srcCol + rowBytes * (srcRow + boxRow);
+                            for(boxCol = 0; boxCol < colScale; boxCol++) 
+                            {
+                                    var srcPixelIdx = srcRowIdx + numComps * boxCol;
+                                    sumR += origImg[srcPixelIdx];
+                                    sumG += origImg[srcPixelIdx + 1];
+                                    sumB += origImg[srcPixelIdx + 2];
+                                    sumA += origImg[srcPixelIdx + 3];
+                            }
+                    }
+                    filteredImg[destIdx++] = sumR / scaleByScale;
+                    filteredImg[destIdx++] = sumG / scaleByScale;
+                    filteredImg[destIdx++] = sumB / scaleByScale;
+                    filteredImg[destIdx] = sumA / scaleByScale;
+            }
+    } 
+  }
+  filter(img: Uint8Array, originalWidth: number, originalHeight: number, scale: number): Uint8Array   {               
+    var drawWidth = Math.ceil(originalWidth/scale);
+    var drawHeight = Math.ceil(originalHeight/scale);  
+    var numComps = 4; // 4 bytes per pixel, tifs are always coming thru here as RGBA
+    var rowBytes = originalWidth * numComps; // Amount of Bytes in a row in the original image
+    var newRowBytes = drawWidth * numComps; // Amount of Bytes in a row in the new image
+   
+    var scaleSquared = scale*scale;           
+    var newImgArray = new Uint8Array(drawHeight * newRowBytes);       
+
+    // Calculate Overflow
+    var overflowRowCnt = originalHeight % scale;
+    var overflowRow = drawHeight - 1; // The last row index in newImgArray
+
+    var overflowColCnt = originalWidth % scale;
+    var overflowCol = newRowBytes - numComps; // The last column index in newImgArray 
+
+    var endCol = drawWidth * numComps;
+
+    // Fill in Main Area 
+    this.filterArea(img, newImgArray, 0, overflowRow, 0, overflowCol, scale, scale, scale, rowBytes, newRowBytes, numComps);
+    
+    // Fill in overflow row area
+    if (overflowRowCnt > 0)
+        this.filterArea(img, newImgArray, overflowRow, drawHeight, 0, overflowCol, overflowRowCnt, scale, scale, rowBytes, newRowBytes, numComps);
+            
+    // Fill in overflow column area 
+    if (overflowColCnt > 0)
+        this.filterArea(img, newImgArray, 0, overflowRow, overflowCol, endCol, scale, overflowColCnt, scale, rowBytes, newRowBytes, numComps);
+
+    // Fill in overflow corner area
+    if(overflowRowCnt > 0 && overflowColCnt > 0)
+            this.filterArea(img, newImgArray, overflowRow, drawHeight, overflowCol, endCol, overflowRowCnt, overflowColCnt, scale, rowBytes, newRowBytes, numComps);
+
+    return newImgArray; 
+  }
+
   toCanvas(): HTMLCanvasElement {
     var width = this.width();
     var height = this.height();
@@ -96,9 +197,20 @@ class Tiff {
       throw new Tiff.Exception('The function TIFFReadRGBAImageOriented returns NULL');
     }
     var image = Tiff.Module.HEAPU8.subarray(raster, raster + width * height * 4);
-
     var canvas = document.createElement('canvas');
     var context = canvas.getContext('2d');
+    // If on a mobile device, check if the image is too large to display 
+    if(this.isMobile())
+    {                
+        // Test if image is too large for the device and get the correct scale for the image        
+        var scale = this.getScale(width, height, canvas, context);
+        if (scale > 1) 
+        {        
+            image = this.filter(image, width, height, scale);
+            width =  Math.ceil(width/scale);
+            height =  Math.ceil(height/scale);
+        }  
+    }  
     canvas.width = width;
     canvas.height = height;
     var imageData = context.createImageData(width, height);

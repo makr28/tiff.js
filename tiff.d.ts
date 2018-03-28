@@ -15,6 +15,10 @@ declare class Tiff {
     setDirectory(index: number): void;
     getField(tag: number): number;
     readRGBAImage(): ArrayBuffer;
+    getScale(width: number, height: number, canvas: HTMLCanvasElement, context: CanvasRenderingContext2D): number ;
+    isMobile(): Boolean;
+    filterArea(origImg: Uint8Array, filteredImg: Uint8Array, startRow: number, endRow: number, startCol: number, endCol: number, rowScale: number, colScale: number, scale: number, rowBytes: number, newRowBytes: number, numComps: number);
+    filter(img: Uint8Array, originalWidth: number, originalHeight: number, scale: number): Uint8Array;
     toCanvas(): HTMLCanvasElement;
     toDataURL(): string;
     close(): void;
