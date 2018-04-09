@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export EMCC_CFLAGS="-O2"
-ZLIB_PKGVER=1.2.8
+ZLIB_PKGVER=1.2.11
 LIBTIFF_PKGVER=4.0.6
 LIBJPEG_PKGVER=9b
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

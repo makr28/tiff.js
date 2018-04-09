@@ -91,13 +91,11 @@ class Tiff {
     while (colorData[0] != 255)
     {
         scale += 1;
-        canvas.width = width;
-        canvas.height = height;       
+        canvas.width = width / scale;
+        canvas.height = height / scale;       
         context.fillStyle = testColor;
         context.fillRect(0,0,1,1);
         colorData = context.getImageData(0,0,1,1).data;
-        width /= 2;
-        height /= 2;
     }
     
     return scale;
@@ -147,21 +145,22 @@ class Tiff {
     } 
   }
   filter(img: Uint8Array, originalWidth: number, originalHeight: number, scale: number): Uint8Array   {               
+    //HELLO
     var drawWidth = Math.ceil(originalWidth/scale);
     var drawHeight = Math.ceil(originalHeight/scale);  
     var numComps = 4; // 4 bytes per pixel, tifs are always coming thru here as RGBA
     var rowBytes = originalWidth * numComps; // Amount of Bytes in a row in the original image
     var newRowBytes = drawWidth * numComps; // Amount of Bytes in a row in the new image
-   
+    
     var scaleSquared = scale*scale;           
     var newImgArray = new Uint8Array(drawHeight * newRowBytes);       
 
     // Calculate Overflow
     var overflowRowCnt = originalHeight % scale;
-    var overflowRow = drawHeight - 1; // The last row index in newImgArray
+    var overflowRow = overflowRowCnt > 0 ? drawHeight - 1 : originalHeight; // The last row index in newImgArray
 
     var overflowColCnt = originalWidth % scale;
-    var overflowCol = newRowBytes - numComps; // The last column index in newImgArray 
+    var overflowCol = overflowColCnt > 0 ? newRowBytes - numComps : newRowBytes; // The last column index in newImgArray 
 
     var endCol = drawWidth * numComps;
 
@@ -186,15 +185,13 @@ class Tiff {
   toCanvas(): HTMLCanvasElement {
     var width = this.width();
     var height = this.height();
-    var raster: number = Tiff.Module.ccall('_TIFFmalloc', 'number',
-                                           ['number'], [width * height * 4])
-    var result: number = Tiff.Module.ccall('TIFFReadRGBAImageOriented', 'number', [
-      'number', 'number', 'number', 'number', 'number', 'number'], [
-      this._tiffPtr, width, height, raster, 1, 0
+    var raster = Tiff.Module.ccall('_TIFFmalloc', 'number', ['number'], [width * height * 4]);
+    var result = Tiff.Module.ccall('TIFFReadRGBAImageOriented', 'number', [
+        'number', 'number', 'number', 'number', 'number', 'number'], [
+        this._tiffPtr, width, height, raster, 1, 0
     ]);
-
     if (result === 0) {
-      throw new Tiff.Exception('The function TIFFReadRGBAImageOriented returns NULL');
+        throw new Tiff.Exception('The function TIFFReadRGBAImageOriented returns NULL');
     }
     var image = Tiff.Module.HEAPU8.subarray(raster, raster + width * height * 4);
     var canvas = document.createElement('canvas');
@@ -204,6 +201,7 @@ class Tiff {
     {                
         // Test if image is too large for the device and get the correct scale for the image        
         var scale = this.getScale(width, height, canvas, context);
+
         if (scale > 1) 
         {        
             image = this.filter(image, width, height, scale);
@@ -212,9 +210,9 @@ class Tiff {
         }  
     }  
     canvas.width = width;
-    canvas.height = height;
+    canvas.height = height;       
     var imageData = context.createImageData(width, height);
-    (<any>imageData).data.set(image);
+    imageData.data.set(image);
     context.putImageData(imageData, 0, 0);
     Tiff.Module.ccall('free', 'number', ['number'], [raster]);
     return canvas;
