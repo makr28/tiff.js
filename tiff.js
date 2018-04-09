@@ -356,28 +356,202 @@ var Tiff = (function () {
         Tiff.Module.ccall('free', 'number', ['number'], [raster]);
         return data;
     };
-    Tiff.prototype.toCanvas = function () {
-        var width = this.width();
-        var height = this.height();
-        var raster = Tiff.Module.ccall('_TIFFmalloc', 'number', ['number'], [width * height * 4]);
-        var result = Tiff.Module.ccall('TIFFReadRGBAImageOriented', 'number', [
-            'number', 'number', 'number', 'number', 'number', 'number'], [
-            this._tiffPtr, width, height, raster, 1, 0
-        ]);
-        if (result === 0) {
-            throw new Tiff.Exception('The function TIFFReadRGBAImageOriented returns NULL');
-        }
-        var image = Tiff.Module.HEAPU8.subarray(raster, raster + width * height * 4);
-        var canvas = document.createElement('canvas');
-        var context = canvas.getContext('2d');
-        canvas.width = width;
-        canvas.height = height;
-        var imageData = context.createImageData(width, height);
-        imageData.data.set(image);
-        context.putImageData(imageData, 0, 0);
-        Tiff.Module.ccall('free', 'number', ['number'], [raster]);
-        return canvas;
-    };
+   
+	/// <summary>
+  /// Checks the device for canvas size restraints by drawing a pixel to the canvas and reading it back. 
+  /// If it can read back the set data, the canvas size is fine.
+  /// Else it will increment the scale by 1 and try again with the newly sized canvas. 
+  /// </summary>
+  /// <param name='width'>The width of the unaltered image</param>
+  /// <param name='height'>The height of the unaltered image</param>
+  /// <param name='canvas'>The canvas that will display the image</param>
+  /// <param name='context'>Holds the image data</param>
+  /// <return>
+  /// Returns the required scale for the image so that it can be rendered on the user's device
+  /// </return>
+  Tiff.prototype.getScale = function(width, height, canvas, context) {
+    var testColor = "#ffffff";
+    var colorData = new Uint8ClampedArray(4);
+    var tiffSize = width * height;
+    var scale = 0;
+
+    while (colorData[0] != 255)
+    {
+        scale += 1;
+        canvas.width = width / scale;
+        canvas.height = height / scale;       
+        context.fillStyle = testColor;
+        context.fillRect(0,0,1,1);
+        colorData = context.getImageData(0,0,1,1).data;
+    }
+    
+    return scale;
+  };
+
+	/// <summary>
+  /// Checks if the device is mobile or not
+  /// </summary>
+  /// <return>
+  /// Returns true if the device is mobile, false if not
+  /// </return>
+  Tiff.prototype.isMobile = function() {
+    return /Mobi/.test(navigator.userAgent);
+  };
+
+	/// <summary>
+  /// Filters the given area of the image into the given area of the new array
+  /// </summary>
+  /// <param name='filteredImg'>The filtered image being modified in the method</param>
+  /// <param name='startRow'>The row in the filtered image to start modifying</param>
+  /// <param name='endRow'>The row in the filtered image to end modifying</param>
+  /// <param name='startCol'>The column in the filtered image to start modifying</param>
+  /// <param name='endCol'>The column in the filtered image to end modifying</param>
+  /// <param name='rowWindow'>The number to scale the rows by - might differ from scale due to overflow conditions</param>
+  /// <param name='colWindow'>The number to scale the columns by - might differ from scale due to overflow conditions</param>
+  /// <param name='scale'>The number your scaling the image by</param>
+  /// <param name='rowBytes'>The number of bytes used by 1 row of pixels in the original unaltered image</param>
+  /// <param name='newRowBytes'>The number of bytes used by 1 row of pixels in the new filtered image</param>
+  /// <param name='numComps'>The number of bytes 1 pixel uses - (RGBA) Red is 1 byte, Blue is 1 byte, Green is 1 byte, Alpha is 1 byte</param>  
+  /// <remarks>
+  /// This method takes a box of pixels based on the rowWindow and colWindow values and averages them into 1 pixel in the new filtered image
+  /// </remarks>
+  Tiff.prototype.filterArea = function(origImg, filteredImg, scale, rowBytes, newRowBytes, numComps, filterData) {             
+    var sumR, sumG, sumB, sumA;
+    var boxRow, boxCol;
+    var destIdx = 0;
+    var scaleByScale = filterData.rowWindow * filterData.colWindow;
+
+    //Filter the given area of the image
+    for (var row = filterData.startRow; row < filterData.endRow; row++)
+    {
+      var srcRow = row * scale;
+      for(var col = filterData.startCol; col < filterData.endCol; col += numComps)
+      {
+              destIdx = row * newRowBytes + col;
+              var srcCol = col * scale;
+              sumR = 0;
+              sumG = 0;
+              sumB = 0;
+              sumA = 0;
+              
+              // Get the average color of all of the pixels that are being downsized into one. The box of pixels will be based on the given scale.
+              for(boxRow = 0; boxRow < filterData.rowWindow; boxRow++) 
+              { 
+                var srcRowIdx = srcCol + rowBytes * (srcRow + boxRow);
+                for(boxCol = 0; boxCol < filterData.colWindow; boxCol++) 
+                {
+                        var srcPixelIdx = srcRowIdx + numComps * boxCol;
+                        sumR += origImg[srcPixelIdx];
+                        sumG += origImg[srcPixelIdx + 1];
+                        sumB += origImg[srcPixelIdx + 2];
+                        sumA += origImg[srcPixelIdx + 3];
+                }
+              }
+              filteredImg[destIdx++] = sumR / scaleByScale;
+              filteredImg[destIdx++] = sumG / scaleByScale;
+              filteredImg[destIdx++] = sumB / scaleByScale;
+              filteredImg[destIdx] = sumA / scaleByScale;
+      }
+    } 
+  };
+  
+  /// <summary>
+  /// Filters an image to a size that can be rendered on the user's device
+  /// </summary>
+  /// <param name='img'>The original unaltered image</param>
+  /// <param name='originalWidth'>The width of the unaltered image</param>
+  /// <param name='originalHeight'>The height of the unaltered image</param>
+  /// <param name='scale'>The scale to resize the image by</param>
+  /// <remarks>
+  /// This method calculates various required values to filter the image, the new width and height,
+  ///  the bytes per row in both the original image and the filtered image, and the overflow values needed 
+  ///  if the image can't be divided up evenly 
+  /// </remarks>
+  /// <return>
+  /// Returns the filtered image of a size the device is capable of rendering
+  /// </return>
+  Tiff.prototype.filter = function(img, originalWidth, originalHeight, scale) {               
+    var drawWidth = Math.ceil(originalWidth/scale);
+    var drawHeight = Math.ceil(originalHeight/scale);  
+    
+    var numComps = 4; // 4 bytes per pixel, tifs are always coming thru here as RGBA
+
+    var rowBytes = originalWidth * numComps; // Amount of Bytes in a row in the original image
+    var newRowBytes = drawWidth * numComps; // Amount of Bytes in a row in the new image
+              
+    var newImgArray = new Uint8Array(drawHeight * newRowBytes);       
+
+    // Calculate Overflow
+    var overflowRowCnt = originalHeight % scale;
+    var overflowRow = overflowRowCnt > 0 ? drawHeight - 1 : originalHeight; // The last row index in newImgArray
+
+    var overflowColCnt = originalWidth % scale;
+    var overflowCol = overflowColCnt > 0 ? newRowBytes - numComps : newRowBytes; // The last column index in newImgArray 
+
+    var lastCol = drawWidth * numComps;
+
+    // Fill in Main Area 
+    this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
+      {startRow: 0, endRow: overflowRow, startCol: 0, endCol: overflowCol, rowWindow: scale, colWindow: scale}
+    );
+    
+    // Fill in overflow row area
+    if (overflowRowCnt > 0)
+      this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
+        {startRow: overflowRow, endRow: drawHeight, startCol: 0, endCol: overflowCol, rowWindow: overflowRowCnt, colWindow: scale}
+      );
+            
+    // Fill in overflow column area 
+    if (overflowColCnt > 0)      
+      this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
+        {startRow: 0, endRow: overflowRow, startCol: overflowCol, endCol: lastCol, rowWindow: scale, colWindow: overflowColCnt}
+      );
+
+    // Fill in overflow corner area
+    if(overflowRowCnt > 0 && overflowColCnt > 0)
+      this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
+        {startRow: overflowRow, endRow: drawHeight, startCol: overflowCol, endCol: lastCol, rowWindow: overflowRowCnt, colWindow: overflowColCnt}
+      );
+
+    return newImgArray; 
+  };
+
+  Tiff.prototype.toCanvas = function() {
+    var width = this.width();
+    var height = this.height();
+    var raster = Tiff.Module.ccall('_TIFFmalloc', 'number', ['number'], [width * height * 4]);
+    var result = Tiff.Module.ccall('TIFFReadRGBAImageOriented', 'number', [
+        'number', 'number', 'number', 'number', 'number', 'number'], [
+        this._tiffPtr, width, height, raster, 1, 0
+    ]);
+    if (result === 0) {
+        throw new Tiff.Exception('The function TIFFReadRGBAImageOriented returns NULL');
+    }
+    var image = Tiff.Module.HEAPU8.subarray(raster, raster + width * height * 4);
+    var canvas = document.createElement('canvas');
+    var context = canvas.getContext('2d');
+    // If on a mobile device, check if the image is too large to display 
+    if(this.isMobile())
+    {                
+        // Test if image is too large for the device and get the correct scale for the image        
+        var scale = this.getScale(width, height, canvas, context);
+
+        if (scale > 1) 
+        {        
+            image = this.filter(image, width, height, scale);
+            width =  Math.ceil(width/scale);
+            height =  Math.ceil(height/scale);
+        }  
+    }  
+    canvas.width = width;
+    canvas.height = height;       
+    var imageData = context.createImageData(width, height);
+    imageData.data.set(image);
+    context.putImageData(imageData, 0, 0);
+    Tiff.Module.ccall('free', 'number', ['number'], [raster]);
+    return canvas;
+  };
+
     Tiff.prototype.toDataURL = function () {
         return this.toCanvas().toDataURL();
     };

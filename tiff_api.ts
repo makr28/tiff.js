@@ -140,7 +140,6 @@ class Tiff {
   /// <remarks>
   /// This method takes a box of pixels based on the rowWindow and colWindow values and averages them into 1 pixel in the new filtered image
   /// </remarks>
-  //filterArea(origImg: Uint8Array, filteredImg: Uint8Array, startRow: number, endRow: number, startCol: number, endCol: number, rowWindow: number, colWindow: number, scale: number, rowBytes: number, newRowBytes: number, numComps: number) {             
   filterArea(origImg: Uint8Array, filteredImg: Uint8Array, scale: number, rowBytes: number, newRowBytes: number, numComps: number, filterData: any) {             
     var sumR, sumG, sumB, sumA;
     var boxRow, boxCol;
