@@ -99,6 +99,7 @@ class Tiff {
     var colorData = new Uint8ClampedArray(4);
     var tiffSize = width * height;
     var scale = 0;
+
     while (colorData[0] != 255)
     {
         scale += 1;
@@ -130,52 +131,53 @@ class Tiff {
   /// <param name='endRow'>The row in the filtered image to end modifying</param>
   /// <param name='startCol'>The column in the filtered image to start modifying</param>
   /// <param name='endCol'>The column in the filtered image to end modifying</param>
-  /// <param name='rowScale'>The number to scale the rows by - might differ from scale due to overflow conditions</param>
-  /// <param name='colScale'>The number to scale the columns by - might differ from scale due to overflow conditions</param>
+  /// <param name='rowWindow'>The number to scale the rows by - might differ from scale due to overflow conditions</param>
+  /// <param name='colWindow'>The number to scale the columns by - might differ from scale due to overflow conditions</param>
   /// <param name='scale'>The number your scaling the image by</param>
   /// <param name='rowBytes'>The number of bytes used by 1 row of pixels in the original unaltered image</param>
   /// <param name='newRowBytes'>The number of bytes used by 1 row of pixels in the new filtered image</param>
   /// <param name='numComps'>The number of bytes 1 pixel uses - (RGBA) Red is 1 byte, Blue is 1 byte, Green is 1 byte, Alpha is 1 byte</param>  
   /// <remarks>
-  /// This method takes a box of pixels based on the rowscale and colscale values and averages them into 1 pixel in the new filtered image
+  /// This method takes a box of pixels based on the rowWindow and colWindow values and averages them into 1 pixel in the new filtered image
   /// </remarks>
-  filterArea(origImg: Uint8Array, filteredImg: Uint8Array, startRow: number, endRow: number, startCol: number, endCol: number, rowScale: number, colScale: number, scale: number, rowBytes: number, newRowBytes: number, numComps: number) {             
+  //filterArea(origImg: Uint8Array, filteredImg: Uint8Array, startRow: number, endRow: number, startCol: number, endCol: number, rowWindow: number, colWindow: number, scale: number, rowBytes: number, newRowBytes: number, numComps: number) {             
+  filterArea(origImg: Uint8Array, filteredImg: Uint8Array, scale: number, rowBytes: number, newRowBytes: number, numComps: number, filterData: any) {             
     var sumR, sumG, sumB, sumA;
     var boxRow, boxCol;
     var destIdx = 0;
-    var scaleByScale = rowScale * colScale;
+    var scaleByScale = filterData.rowWindow * filterData.colWindow;
 
     //Filter the given area of the image
-    for (var row = startRow; row < endRow; row++)
+    for (var row = filterData.startRow; row < filterData.endRow; row++)
     {
-            var srcRow = row * scale;
-            for(var col = startCol; col < endCol; col += numComps)
-            {
-                    var destIdx = row * newRowBytes + col;
-                    var srcCol = col * scale;
-                    sumR = 0;
-                    sumG = 0;
-                    sumB = 0;
-                    sumA = 0;
-                    
-                    // Get the average color of all of the pixels that are being downsized into one. The box of pixels will be based on the given scale.
-                    for(boxRow = 0; boxRow < rowScale; boxRow++) 
-                    { 
-                            var srcRowIdx = srcCol + rowBytes * (srcRow + boxRow);
-                            for(boxCol = 0; boxCol < colScale; boxCol++) 
-                            {
-                                    var srcPixelIdx = srcRowIdx + numComps * boxCol;
-                                    sumR += origImg[srcPixelIdx];
-                                    sumG += origImg[srcPixelIdx + 1];
-                                    sumB += origImg[srcPixelIdx + 2];
-                                    sumA += origImg[srcPixelIdx + 3];
-                            }
-                    }
-                    filteredImg[destIdx++] = sumR / scaleByScale;
-                    filteredImg[destIdx++] = sumG / scaleByScale;
-                    filteredImg[destIdx++] = sumB / scaleByScale;
-                    filteredImg[destIdx] = sumA / scaleByScale;
-            }
+      var srcRow = row * scale;
+      for(var col = filterData.startCol; col < filterData.endCol; col += numComps)
+      {
+              destIdx = row * newRowBytes + col;
+              var srcCol = col * scale;
+              sumR = 0;
+              sumG = 0;
+              sumB = 0;
+              sumA = 0;
+              
+              // Get the average color of all of the pixels that are being downsized into one. The box of pixels will be based on the given scale.
+              for(boxRow = 0; boxRow < filterData.rowWindow; boxRow++) 
+              { 
+                var srcRowIdx = srcCol + rowBytes * (srcRow + boxRow);
+                for(boxCol = 0; boxCol < filterData.colWindow; boxCol++) 
+                {
+                        var srcPixelIdx = srcRowIdx + numComps * boxCol;
+                        sumR += origImg[srcPixelIdx];
+                        sumG += origImg[srcPixelIdx + 1];
+                        sumB += origImg[srcPixelIdx + 2];
+                        sumA += origImg[srcPixelIdx + 3];
+                }
+              }
+              filteredImg[destIdx++] = sumR / scaleByScale;
+              filteredImg[destIdx++] = sumG / scaleByScale;
+              filteredImg[destIdx++] = sumB / scaleByScale;
+              filteredImg[destIdx] = sumA / scaleByScale;
+      }
     } 
   }
   
@@ -194,14 +196,15 @@ class Tiff {
   /// <return>
   /// Returns the filtered image of a size the device is capable of rendering
   /// </return>
-  filter(img: Uint8Array, originalWidth: number, originalHeight: number, scale: number): Uint8Array   {               
+  filter(img: Uint8Array, originalWidth: number, originalHeight: number, scale: number): Uint8Array {               
     var drawWidth = Math.ceil(originalWidth/scale);
     var drawHeight = Math.ceil(originalHeight/scale);  
+    
     var numComps = 4; // 4 bytes per pixel, tifs are always coming thru here as RGBA
+
     var rowBytes = originalWidth * numComps; // Amount of Bytes in a row in the original image
     var newRowBytes = drawWidth * numComps; // Amount of Bytes in a row in the new image
-    
-    var scaleSquared = scale*scale;           
+              
     var newImgArray = new Uint8Array(drawHeight * newRowBytes);       
 
     // Calculate Overflow
@@ -211,22 +214,30 @@ class Tiff {
     var overflowColCnt = originalWidth % scale;
     var overflowCol = overflowColCnt > 0 ? newRowBytes - numComps : newRowBytes; // The last column index in newImgArray 
 
-    var endCol = drawWidth * numComps;
+    var lastCol = drawWidth * numComps;
 
     // Fill in Main Area 
-    this.filterArea(img, newImgArray, 0, overflowRow, 0, overflowCol, scale, scale, scale, rowBytes, newRowBytes, numComps);
+    this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
+      {startRow: 0, endRow: overflowRow, startCol: 0, endCol: overflowCol, rowWindow: scale, colWindow: scale}
+    );
     
     // Fill in overflow row area
     if (overflowRowCnt > 0)
-        this.filterArea(img, newImgArray, overflowRow, drawHeight, 0, overflowCol, overflowRowCnt, scale, scale, rowBytes, newRowBytes, numComps);
+      this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
+        {startRow: overflowRow, endRow: drawHeight, startCol: 0, endCol: overflowCol, rowWindow: overflowRowCnt, colWindow: scale}
+      );
             
     // Fill in overflow column area 
-    if (overflowColCnt > 0)
-        this.filterArea(img, newImgArray, 0, overflowRow, overflowCol, endCol, scale, overflowColCnt, scale, rowBytes, newRowBytes, numComps);
+    if (overflowColCnt > 0)      
+      this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
+        {startRow: 0, endRow: overflowRow, startCol: overflowCol, endCol: lastCol, rowWindow: scale, colWindow: overflowColCnt}
+      );
 
     // Fill in overflow corner area
     if(overflowRowCnt > 0 && overflowColCnt > 0)
-            this.filterArea(img, newImgArray, overflowRow, drawHeight, overflowCol, endCol, overflowRowCnt, overflowColCnt, scale, rowBytes, newRowBytes, numComps);
+      this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
+        {startRow: overflowRow, endRow: drawHeight, startCol: overflowCol, endCol: lastCol, rowWindow: overflowRowCnt, colWindow: overflowColCnt}
+      );
 
     return newImgArray; 
   }
