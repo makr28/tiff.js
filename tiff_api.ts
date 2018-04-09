@@ -82,8 +82,19 @@ class Tiff {
     return data;
   }
 
+	/// <summary>
+  /// Checks the device for canvas size restraints by drawing a pixel to the canvas and reading it back. 
+  /// If it can read back the set data, the canvas size is fine.
+  /// Else it will increment the scale by 1 and try again with the newly sized canvas. 
+  /// </summary>
+  /// <param name='width'>The width of the unaltered image</param>
+  /// <param name='height'>The height of the unaltered image</param>
+  /// <param name='canvas'>The canvas that will display the image</param>
+  /// <param name='context'>Holds the image data</param>
+  /// <return>
+  /// Returns the required scale for the image so that it can be rendered on the user's device
+  /// </return>
   getScale(width: number, height: number, canvas: HTMLCanvasElement, context: CanvasRenderingContext2D): number {
-    // Tests if the canvas is too big for the device by drawing a pixel and reading it back
     var testColor = "#ffffff";
     var colorData = new Uint8ClampedArray(4);
     var tiffSize = width * height;
@@ -101,10 +112,33 @@ class Tiff {
     return scale;
   }
 
+	/// <summary>
+  /// Checks if the device is mobile or not
+  /// </summary>
+  /// <return>
+  /// Returns true if the device is mobile, false if not
+  /// </return>
   isMobile(): Boolean {
     return /Mobi/.test(navigator.userAgent);
   }
 
+	/// <summary>
+  /// Filters the given area of the image into the given area of the new array
+  /// </summary>
+  /// <param name='filteredImg'>The filtered image being modified in the method</param>
+  /// <param name='startRow'>The row in the filtered image to start modifying</param>
+  /// <param name='endRow'>The row in the filtered image to end modifying</param>
+  /// <param name='startCol'>The column in the filtered image to start modifying</param>
+  /// <param name='endCol'>The column in the filtered image to end modifying</param>
+  /// <param name='rowScale'>The number to scale the rows by - might differ from scale due to overflow conditions</param>
+  /// <param name='colScale'>The number to scale the columns by - might differ from scale due to overflow conditions</param>
+  /// <param name='scale'>The number your scaling the image by</param>
+  /// <param name='rowBytes'>The number of bytes used by 1 row of pixels in the original unaltered image</param>
+  /// <param name='newRowBytes'>The number of bytes used by 1 row of pixels in the new filtered image</param>
+  /// <param name='numComps'>The number of bytes 1 pixel uses - (RGBA) Red is 1 byte, Blue is 1 byte, Green is 1 byte, Alpha is 1 byte</param>  
+  /// <remarks>
+  /// This method takes a box of pixels based on the rowscale and colscale values and averages them into 1 pixel in the new filtered image
+  /// </remarks>
   filterArea(origImg: Uint8Array, filteredImg: Uint8Array, startRow: number, endRow: number, startCol: number, endCol: number, rowScale: number, colScale: number, scale: number, rowBytes: number, newRowBytes: number, numComps: number) {             
     var sumR, sumG, sumB, sumA;
     var boxRow, boxCol;
@@ -144,8 +178,23 @@ class Tiff {
             }
     } 
   }
+  
+  /// <summary>
+  /// Filters an image to a size that can be rendered on the user's device
+  /// </summary>
+  /// <param name='img'>The original unaltered image</param>
+  /// <param name='originalWidth'>The width of the unaltered image</param>
+  /// <param name='originalHeight'>The height of the unaltered image</param>
+  /// <param name='scale'>The scale to resize the image by</param>
+  /// <remarks>
+  /// This method calculates various required values to filter the image, the new width and height,
+  ///  the bytes per row in both the original image and the filtered image, and the overflow values needed 
+  ///  if the image can't be divided up evenly 
+  /// </remarks>
+  /// <return>
+  /// Returns the filtered image of a size the device is capable of rendering
+  /// </return>
   filter(img: Uint8Array, originalWidth: number, originalHeight: number, scale: number): Uint8Array   {               
-    //HELLO
     var drawWidth = Math.ceil(originalWidth/scale);
     var drawHeight = Math.ceil(originalHeight/scale);  
     var numComps = 4; // 4 bytes per pixel, tifs are always coming thru here as RGBA
