@@ -207,35 +207,35 @@ class Tiff {
     var newImgArray = new Uint8Array(drawHeight * newRowBytes);       
 
     // Calculate Overflow
-    var overflowRowCnt = originalHeight % scale;
-    var overflowRow = overflowRowCnt > 0 ? drawHeight - 1 : originalHeight; // The last row index in newImgArray
+    var overflowRowCnt = originalHeight % scale; // The remainder of the rows after the rest of the rows were divided evenly by the scale
+    var overflowDestRow = overflowRowCnt > 0 ? drawHeight - 1 : originalHeight; // The index of the last row in the new filtered image, where the overflow rows will be placed
 
-    var overflowColCnt = originalWidth % scale;
-    var overflowCol = overflowColCnt > 0 ? newRowBytes - numComps : newRowBytes; // The last column index in newImgArray 
+    var overflowColCnt = originalWidth % scale; // The remainder of the columns after the rest of the columns were divided evenly by the scale
+    var overflowDestCol = overflowColCnt > 0 ? newRowBytes - numComps : newRowBytes; // The index of the last column in the new filtered image, where the overflow columns will be placed
 
     var lastCol = drawWidth * numComps;
 
     // Fill in Main Area 
     this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
-      {startRow: 0, endRow: overflowRow, startCol: 0, endCol: overflowCol, rowWindow: scale, colWindow: scale}
+      {startRow: 0, endRow: overflowDestRow,  startCol: 0, endCol: overflowDestCol, rowWindow: scale, colWindow: scale}
     );
     
     // Fill in overflow row area
     if (overflowRowCnt > 0)
       this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
-        {startRow: overflowRow, endRow: drawHeight, startCol: 0, endCol: overflowCol, rowWindow: overflowRowCnt, colWindow: scale}
+        {startRow: overflowDestRow,  endRow: drawHeight, startCol: 0, endCol: overflowDestCol, rowWindow: overflowRowCnt, colWindow: scale}
       );
             
     // Fill in overflow column area 
     if (overflowColCnt > 0)      
       this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
-        {startRow: 0, endRow: overflowRow, startCol: overflowCol, endCol: lastCol, rowWindow: scale, colWindow: overflowColCnt}
+        {startRow: 0, endRow: overflowDestRow,  startCol: overflowDestCol, endCol: lastCol, rowWindow: scale, colWindow: overflowColCnt}
       );
 
     // Fill in overflow corner area
     if(overflowRowCnt > 0 && overflowColCnt > 0)
       this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
-        {startRow: overflowRow, endRow: drawHeight, startCol: overflowCol, endCol: lastCol, rowWindow: overflowRowCnt, colWindow: overflowColCnt}
+        {startRow: overflowDestRow,  endRow: drawHeight, startCol: overflowDestCol, endCol: lastCol, rowWindow: overflowRowCnt, colWindow: overflowColCnt}
       );
 
     return newImgArray; 
