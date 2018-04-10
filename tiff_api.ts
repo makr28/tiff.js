@@ -113,7 +113,7 @@ class Tiff {
     return scale;
   }
 
-	/// <summary>
+  /// <summary>
   /// Checks if the device is mobile or not
   /// </summary>
   /// <return>
@@ -213,8 +213,6 @@ class Tiff {
     var overflowColCnt = originalWidth % scale; // The remainder of the columns after the rest of the columns were divided evenly by the scale
     var overflowDestCol = overflowColCnt > 0 ? newRowBytes - numComps : newRowBytes; // The index of the last column in the new filtered image, where the overflow columns will be placed
 
-    var lastCol = drawWidth * numComps;
-
     // Fill in Main Area 
     this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
       {startRow: 0, endRow: overflowDestRow,  startCol: 0, endCol: overflowDestCol, rowWindow: scale, colWindow: scale}
@@ -229,13 +227,13 @@ class Tiff {
     // Fill in overflow column area 
     if (overflowColCnt > 0)      
       this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
-        {startRow: 0, endRow: overflowDestRow,  startCol: overflowDestCol, endCol: lastCol, rowWindow: scale, colWindow: overflowColCnt}
+        {startRow: 0, endRow: overflowDestRow,  startCol: overflowDestCol, endCol: newRowBytes, rowWindow: scale, colWindow: overflowColCnt}
       );
 
     // Fill in overflow corner area
     if(overflowRowCnt > 0 && overflowColCnt > 0)
       this.filterArea(img, newImgArray, scale, rowBytes, newRowBytes, numComps, 
-        {startRow: overflowDestRow,  endRow: drawHeight, startCol: overflowDestCol, endCol: lastCol, rowWindow: overflowRowCnt, colWindow: overflowColCnt}
+        {startRow: overflowDestRow,  endRow: drawHeight, startCol: overflowDestCol, endCol: newRowBytes, rowWindow: overflowRowCnt, colWindow: overflowColCnt}
       );
 
     return newImgArray; 
