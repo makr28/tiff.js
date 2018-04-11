@@ -357,7 +357,7 @@ var Tiff = (function () {
         return data;
     };
    
-	/// <summary>
+  /// <summary>
   /// Checks the device for canvas size restraints by drawing a pixel to the canvas and reading it back. 
   /// If it can read back the set data, the canvas size is fine.
   /// Else it will increment the scale by 1 and try again with the newly sized canvas. 
@@ -398,7 +398,7 @@ var Tiff = (function () {
     return /Mobi/.test(navigator.userAgent);
   };
 
-	/// <summary>
+  /// <summary>
   /// Filters the given area of the image into the given area of the new array
   /// </summary>
   /// <param name='filteredImg'>The filtered image being modified in the method</param>
